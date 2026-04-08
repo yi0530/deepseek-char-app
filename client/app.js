@@ -5,13 +5,16 @@ const { createApp, ref, computed, nextTick, onMounted, onUpdated } = Vue;
 const app = createApp({
     // 3. setup函数是Vue 3的组合式API入口
     setup() {
-        // 4. 定义响应式数据（ref：基本类型，reactive：对象类型）
+        // 4. 定义响应式数据
         
         // 用户输入的消息
         const userInput = ref('');
         
         // 当前是否正在加载（等待AI回复）
         const isLoading = ref(false);
+        
+        // 错误信息
+        const error = ref('');  // 添加这一行！
         
         // 当前聊天ID
         const currentChatId = ref(0);
@@ -61,9 +64,9 @@ const app = createApp({
             const message = userInput.value.trim();
             if (!message || isLoading.value) return;
             
-            // 添加用户消息
-            currentChat.value.messages.push({
-                role: 'user',
+            // 添加用户消息 - 修正这里！
+            currentChat.value.messages.push({  // ✅ 使用 currentChat.value.messages
+                role: 'user', 
                 content: message,
                 timestamp: new Date().toLocaleTimeString(),
                 isCode: false
@@ -75,29 +78,52 @@ const app = createApp({
             
             // 设置加载状态
             isLoading.value = true;
+            error.value = '';
             
-            // 这里稍后会连接后端API
-            // 暂时模拟AI回复
-            setTimeout(() => {
-                // 模拟AI回复
-                const responses = [
-                    "这是一个模拟回复。实际使用时会连接DeepSeek API。",
-                    "我理解您的问题了。这是一个演示版本的聊天界面。",
-                    "要使用完整功能，需要连接后端API并配置API密钥。",
-                    "这个界面模仿了DeepSeek官网的样式，包含代码高亮、历史对话等功能。"
-                ];
+            try {
+                // 调用后端API
+                console.log('📤 发送消息到后端:', message);
                 
-                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                const response = await fetch('http://localhost:3000/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        // 发送当前聊天的所有消息 - 修正这里！
+                        messages: currentChat.value.messages
+                    })
+                });
                 
-                currentChat.value.messages.push({
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('📥 收到后端响应:', data);
+                
+                // 添加AI回复 - 修正这里！
+                currentChat.value.messages.push({  // ✅ 使用 currentChat.value.messages
                     role: 'assistant',
-                    content: randomResponse,
+                    content: data.content,
                     timestamp: new Date().toLocaleTimeString(),
                     isCode: false
                 });
                 
+            } catch (err) {
+                console.error('❌ 发送失败:', err);
+                error.value = `发送失败: ${err.message}`;
+                
+                // 可选：添加一个错误消息
+                currentChat.value.messages.push({
+                    role: 'assistant',
+                    content: '抱歉，发送消息时出现错误。',
+                    timestamp: new Date().toLocaleTimeString(),
+                    isCode: false
+                });
+            } finally {
                 isLoading.value = false;
-            }, 1000);
+            }
         };
         
         // 创建新对话
@@ -212,6 +238,7 @@ const app = createApp({
             // 数据
             userInput,
             isLoading,
+            error,  // 添加这一行！
             currentChatId,
             chatHistory,
             currentChat,
@@ -230,6 +257,7 @@ const app = createApp({
             regenerateMessage,
             insertExample,
             autoResize,
+            resetTextareaHeight,
             handleKeyDown
         };
     }
