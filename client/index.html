@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- 1. 文档声明和基本设置 -->
+    <meta charset="UTF-8">  <!-- 设置字符编码为UTF-8，支持中文 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 让网页在手机上正常显示 -->
+    <title>DeepSeek Chat</title> <!-- 浏览器标签页上显示的标题 -->
+    
+    <!-- 2. 引入Vue 3（通过CDN，无需本地安装） -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- 3. 引入我们的CSS样式文件 -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- 4. 引入图标库（用于消息图标） -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 5. 设置浏览器标签图标（可选） -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
+</head>
+<body>
+    <!-- 6. Vue应用的挂载点 -->
+    <div id="app">
+        <!-- 整个应用都包含在这个div中，Vue会控制这里的所有内容 -->
+        
+        <!-- 7. 侧边栏 - 模仿DeepSeek的对话历史 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat" @click="newChat">
+                    <i class="fas fa-plus"></i> 新对话
+                </button>
+            </div>
+            
+            <!-- 历史对话列表 -->
+            <div class="history-list">
+                <div v-for="(chat, index) in chatHistory" 
+                     :key="index"
+                     class="history-item"
+                     :class="{ active: currentChatId === index }"
+                     @click="loadChat(index)">
+                    <i class="fas fa-message"></i>
+                    <span>对话 {{ index + 1 }}</span>
+                </div>
+            </div>
+            
+            <!-- 用户信息区域 -->
+            <div class="user-info">
+                <div class="avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <span>用户</span>
+            </div>
+        </div>
+        
+        <!-- 8. 主聊天区域 -->
+        <div class="main-chat">
+            <!-- 顶部标题栏 -->
+            <header class="chat-header">
+                <h1>
+                    <i class="fas fa-robot"></i>
+                    DeepSeek AI 助手
+                </h1>
+                <div class="model-info">
+                    <span class="model-tag">DeepSeek Chat</span>
+                </div>
+            </header>
+            
+            <!-- 消息显示区域 -->
+            <div class="messages-container" ref="messagesContainer">
+                <!-- 系统消息 -->
+                <div class="message system">
+                    <div class="avatar">
+                        <i class="fas fa-info-circle"></i>
+                    </div>
+                    <div class="content">
+                        我是DeepSeek AI助手，可以回答你的各种问题。请开始对话吧！
+                    </div>
+                </div>
+                
+                <!-- 循环显示所有消息 -->
+                <div v-for="(message, index) in currentChat.messages" 
+                     :key="index"
+                     :class="['message', message.role]">
+                    <!-- 消息头像 -->
+                    <div class="avatar">
+                        <i :class="getAvatarIcon(message.role)"></i>
+                    </div>
+                    
+                    <!-- 消息内容 -->
+                    <div class="content">
+                        <!-- 显示纯文本内容 -->
+                        <div v-if="!message.isCode" class="text">
+                            {{ message.content }}
+                        </div>
+                        
+                        <!-- 显示代码块（如果有的话） -->
+                        <div v-if="message.isCode" class="code-block">
+                            <div class="code-header">
+                                <span>{{ message.language }}</span>
+                                <button @click="copyCode(message.content)">
+                                    <i class="fas fa-copy"></i> 复制
+                                </button>
+                            </div>
+                            <pre><code>{{ message.content }}</code></pre>
+                        </div>
+                        
+                        <!-- 消息操作按钮 -->
+                        <div class="message-actions">
+                            <button @click="copyMessage(message.content)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                            <button @click="regenerateMessage(index)">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 加载状态 -->
+                <div v-if="isLoading" class="message assistant">
+                    <div class="avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="content">
+                        <div class="typing-indicator">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9. 输入区域 -->
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <!-- 文本输入框 -->
+                    <textarea 
+                        v-model="userInput"
+                        @keydown.enter.exact.prevent="sendMessage"
+                        placeholder="输入消息... (按Enter发送，Shift+Enter换行)"
+                        rows="1"
+                        @input="autoResize"
+                        ref="textarea"
+                    ></textarea>
+                    
+                    <!-- 发送按钮 -->
+                    <button 
+                        class="send-btn" 
+                        @click="sendMessage"
+                        :disabled="!userInput.trim() || isLoading"
+                        :class="{ disabled: !userInput.trim() || isLoading }"
+                    >
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                
+                <!-- 功能提示 -->
+                <div class="input-footer">
+                    <div class="features">
+                        <button class="feature-btn" @click="insertExample('代码')">
+                            <i class="fas fa-code"></i> 代码示例
+                        </button>
+                        <button class="feature-btn" @click="insertExample('问题')">
+                            <i class="fas fa-question"></i> 问题示例
+                        </button>
+                    </div>
+                    <div class="hint">
+                        <i class="fas fa-info-circle"></i>
+                        DeepSeek 可以回答问题、编写代码、进行对话
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 10. 引入我们的JavaScript代码 -->
+    <script src="app.js"></script>
+</body>
+</html>
